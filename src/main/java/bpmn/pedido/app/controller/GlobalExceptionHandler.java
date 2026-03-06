@@ -19,6 +19,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static bpmn.pedido.app.utils.Constants.MSG_ERROR_VALIDATION;
+import static bpmn.pedido.app.utils.Constants.MSG_ERROR_NOT_AUTH;
+import static bpmn.pedido.app.utils.Constants.MSG_ERROR_NOT_AUTHORIZE;
+import static bpmn.pedido.app.utils.Constants.MSG_ERROR_INTERNAL_SERVER_ERROR;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -50,7 +55,7 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(this::formatFieldError)
                 .toList();
-        return build(HttpStatus.BAD_REQUEST, "Error de validacion", details);
+        return build(HttpStatus.BAD_REQUEST, MSG_ERROR_VALIDATION, details);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -59,23 +64,23 @@ public class GlobalExceptionHandler {
                 .stream()
                 .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                 .toList();
-        return build(HttpStatus.BAD_REQUEST, "Error de validacion", details);
+        return build(HttpStatus.BAD_REQUEST, MSG_ERROR_VALIDATION, details);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> handleAuthentication(AuthenticationException ex) {
-        return build(HttpStatus.UNAUTHORIZED, "No autenticado", List.of());
+        return build(HttpStatus.UNAUTHORIZED, MSG_ERROR_NOT_AUTH, List.of());
     }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(AccessDeniedException ex) {
-        return build(HttpStatus.FORBIDDEN, "No autorizado", List.of());
+        return build(HttpStatus.FORBIDDEN, MSG_ERROR_NOT_AUTHORIZE, List.of());
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex) {
         log.error("Error no controlado", ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno del servidor", List.of());
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, MSG_ERROR_INTERNAL_SERVER_ERROR, List.of());
     }
 
     private String formatFieldError(FieldError fieldError) {
@@ -92,4 +97,5 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(status).body(response);
     }
+
 }

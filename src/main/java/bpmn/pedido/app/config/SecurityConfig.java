@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -19,6 +20,17 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 
+import static bpmn.pedido.app.utils.Constants.REQUEST_MATCHERS_ACTUATOR_HEALTH;
+import static bpmn.pedido.app.utils.Constants.REQUEST_MATCHERS_ACTUATOR;
+import static bpmn.pedido.app.utils.Constants.REQUEST_MATCHERS_INFO;
+import static bpmn.pedido.app.utils.Constants.ROLE_ADMIN;
+import static bpmn.pedido.app.utils.Constants.REQUEST_MATCHERS_API_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.ROLE_OPERADOR;
+import static bpmn.pedido.app.utils.Constants.REALM_ACCESS;
+import static bpmn.pedido.app.utils.Constants.REALM_ACCESS_ROLES;
+import static bpmn.pedido.app.utils.Constants.RESOURCE_ACCESS;
+import static bpmn.pedido.app.utils.Constants.ROLE_NAME;
+
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
@@ -27,14 +39,14 @@ public class SecurityConfig {
     private String resourceClientId;
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http)  {
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
-                        .requestMatchers("/actuator/**").hasRole("ADMIN")
-                        .requestMatchers("/api/pedidos/**").hasAnyRole("OPERADOR", "ADMIN")
+                        .requestMatchers(REQUEST_MATCHERS_ACTUATOR_HEALTH, REQUEST_MATCHERS_INFO).permitAll()
+                        .requestMatchers(REQUEST_MATCHERS_ACTUATOR).hasRole(ROLE_ADMIN)
+                        .requestMatchers(REQUEST_MATCHERS_API_PEDIDO).hasAnyRole(ROLE_OPERADOR, ROLE_ADMIN)
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
@@ -45,7 +57,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    Converter<Jwt, ? extends AbstractAuthenticationToken> jwtAuthenticationConverter() {
+    Converter<Jwt, AbstractAuthenticationToken> jwtAuthenticationConverter() {
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         converter.setJwtGrantedAuthoritiesConverter(new KeycloakRealmRoleConverter(resourceClientId));
         return converter;
@@ -61,16 +73,16 @@ public class SecurityConfig {
         @Override
         public Collection<GrantedAuthority> convert(Jwt jwt) {
             List<GrantedAuthority> authorities = new ArrayList<>();
-            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+            Map<String, Object> realmAccess = jwt.getClaimAsMap(REALM_ACCESS);
             if (realmAccess != null) {
-                addRoles(authorities, realmAccess.get("roles"));
+                addRoles(authorities, realmAccess.get(REALM_ACCESS_ROLES));
             }
 
-            Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
+            Map<String, Object> resourceAccess = jwt.getClaimAsMap(RESOURCE_ACCESS);
             if (resourceAccess != null) {
                 Object clientAccessObj = resourceAccess.get(resourceClientId);
                 if (clientAccessObj instanceof Map<?, ?> clientAccessMap) {
-                    addRoles(authorities, clientAccessMap.get("roles"));
+                    addRoles(authorities, clientAccessMap.get(REALM_ACCESS_ROLES));
                 }
             }
 
@@ -81,7 +93,7 @@ public class SecurityConfig {
             if (rolesObj instanceof List<?> roles) {
                 for (Object role : roles) {
                     if (role instanceof String roleName && !roleName.isBlank()) {
-                        authorities.add(new SimpleGrantedAuthority("ROLE_" + roleName.toUpperCase()));
+                        authorities.add(new SimpleGrantedAuthority(ROLE_NAME + roleName.toUpperCase()));
                     }
                 }
             }

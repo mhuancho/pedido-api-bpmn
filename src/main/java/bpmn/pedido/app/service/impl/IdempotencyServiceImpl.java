@@ -13,6 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+
+import static bpmn.pedido.app.utils.Constants.MSG_ERROR_ID_USED;
+
 @Service
 @RequiredArgsConstructor
 public class IdempotencyServiceImpl implements IdempotencyService {
@@ -23,9 +26,9 @@ public class IdempotencyServiceImpl implements IdempotencyService {
     @Override
     public void validateNoCrossReuse(String key, String accion, Long pedidoId) {
         repository.findByIdempotencyKey(key)
-                .filter(record -> !record.getAccion().equals(accion) || !record.getPedidoId().equals(pedidoId))
-                .ifPresent(record -> {
-                    throw new IdempotencyConflictException("La clave de idempotencia ya fue usada en otra operacion");
+                .filter(idempotencyRecord -> !idempotencyRecord.getAccion().equals(accion) || !idempotencyRecord.getPedidoId().equals(pedidoId))
+                .ifPresent(recordPresent -> {
+                    throw new IdempotencyConflictException(MSG_ERROR_ID_USED);
                 });
     }
 
@@ -33,22 +36,22 @@ public class IdempotencyServiceImpl implements IdempotencyService {
     @Override
     public IdempotencyReservation reserve(String key, String accion, CambioEstadoResponse response) {
         try {
-            IdempotencyRecordEntity record = new IdempotencyRecordEntity();
-            record.setIdempotencyKey(key);
-            record.setAccion(accion);
-            record.setPedidoId(response.id());
-            record.setEstadoResultante(response.estado());
-            repository.save(record);
+            IdempotencyRecordEntity recordReserve = new IdempotencyRecordEntity();
+            recordReserve.setIdempotencyKey(key);
+            recordReserve.setAccion(accion);
+            recordReserve.setPedidoId(response.id());
+            recordReserve.setEstadoResultante(response.estado());
+            repository.save(recordReserve);
             return new IdempotencyReservation(true, response);
         } catch (DataIntegrityViolationException ex) {
             return repository.findByIdempotencyKey(key)
-                    .map(record -> {
-                        boolean sameOperation = record.getAccion().equals(accion) && record.getPedidoId().equals(response.id());
+                    .map(recordMap -> {
+                        boolean sameOperation = recordMap.getAccion().equals(accion) && recordMap.getPedidoId().equals(response.id());
                         if (!sameOperation) {
-                            throw new IdempotencyConflictException("La clave de idempotencia ya fue usada en otra operacion");
+                            throw new IdempotencyConflictException(MSG_ERROR_ID_USED);
                         }
                         CambioEstadoResponse existingResponse =
-                                new CambioEstadoResponse(record.getPedidoId(), record.getEstadoResultante());
+                                new CambioEstadoResponse(recordMap.getPedidoId(), recordMap.getEstadoResultante());
                         return new IdempotencyReservation(false, existingResponse);
                     })
                     .orElseThrow(() -> ex);

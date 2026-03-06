@@ -1,7 +1,6 @@
 package bpmn.pedido.app.config;
 
 import bpmn.pedido.app.service.OutboxService;
-import bpmn.pedido.app.service.impl.OutboxServiceImpl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.annotation.Observed;
 import org.slf4j.Logger;
@@ -10,6 +9,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.atomic.AtomicLong;
+
+import static bpmn.pedido.app.utils.Constants.OUTBOX_EVENTS_PENDING;
 
 @Component
 public class OutboxPublisherWorker {
@@ -21,7 +22,7 @@ public class OutboxPublisherWorker {
 
     public OutboxPublisherWorker(OutboxService outboxService, MeterRegistry meterRegistry) {
         this.outboxService = outboxService;
-        meterRegistry.gauge("outbox.events.pending", pendingGauge);
+        meterRegistry.gauge(OUTBOX_EVENTS_PENDING, pendingGauge);
     }
 
     @Scheduled(fixedDelayString = "${app.outbox.publisher-delay-ms:3000}")

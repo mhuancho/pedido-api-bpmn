@@ -1,7 +1,6 @@
 package bpmn.pedido.app.config;
 
 import bpmn.pedido.app.service.IdempotencyService;
-import bpmn.pedido.app.service.impl.IdempotencyServiceImpl;
 import io.micrometer.observation.annotation.Observed;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;

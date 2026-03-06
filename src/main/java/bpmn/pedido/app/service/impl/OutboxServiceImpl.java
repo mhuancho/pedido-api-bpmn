@@ -16,10 +16,27 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+
+import static bpmn.pedido.app.utils.Constants.PEDIDO;
+import static bpmn.pedido.app.utils.Constants.WORKFLOW_MESSAGE;
+import static bpmn.pedido.app.utils.Constants.WORKFLOW_START;
+import static bpmn.pedido.app.utils.Constants.PROCESO_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_ID;
+import static bpmn.pedido.app.utils.Constants.STATUS;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_NOT_FOUND;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_CORRELATION;
+import static bpmn.pedido.app.utils.Constants.CLIENTE;
+import static bpmn.pedido.app.utils.Constants.MONTO;
+import static bpmn.pedido.app.utils.Constants.TIPO_EVENT_NOT_SUPPORT;
+import static bpmn.pedido.app.utils.Constants.OUTBOX_EVENTS_PROCESSED_TOTAL;
+import static bpmn.pedido.app.utils.Constants.EVENT_TYPE;
+import static bpmn.pedido.app.utils.Constants.OUTBOX_EVENTS_FAILED_TOTAL;
+import static bpmn.pedido.app.utils.Constants.OUTBOX_EVENTS_RETRY_TOTAL;
 
 @Service
 @RequiredArgsConstructor
@@ -43,9 +60,9 @@ public class OutboxServiceImpl implements OutboxService {
     @Override
     public void enqueueWorkflowMessage(Long pedidoId, String correlationKey, String messageName, String estado) {
         OutboxEventEntity event = new OutboxEventEntity();
-        event.setAggregateType("PEDIDO");
+        event.setAggregateType(PEDIDO);
         event.setAggregateId(pedidoId);
-        event.setEventType("WORKFLOW_MESSAGE");
+        event.setEventType(WORKFLOW_MESSAGE);
         event.setMessageName(messageName);
         event.setCorrelationKey(correlationKey);
         event.setEstado(estado);
@@ -59,10 +76,10 @@ public class OutboxServiceImpl implements OutboxService {
     @Override
     public void enqueueWorkflowStart(PedidoEntity pedido) {
         OutboxEventEntity event = new OutboxEventEntity();
-        event.setAggregateType("PEDIDO");
+        event.setAggregateType(PEDIDO);
         event.setAggregateId(pedido.getId());
-        event.setEventType("WORKFLOW_START");
-        event.setMessageName("proceso-pedido");
+        event.setEventType(WORKFLOW_START);
+        event.setMessageName(PROCESO_PEDIDO);
         event.setCorrelationKey(pedido.getPedidoCorrelationKey());
         event.setEstado(pedido.getEstado().name());
         event.setStatus(OutboxStatus.PENDING);
@@ -94,7 +111,7 @@ public class OutboxServiceImpl implements OutboxService {
             return claimIds;
         });
 
-        if (ids == null || ids.isEmpty()) {
+        if (CollectionUtils.isEmpty(ids)) {
             return;
         }
 
@@ -105,30 +122,30 @@ public class OutboxServiceImpl implements OutboxService {
 
     private void processEvent(OutboxEventEntity event) {
         try {
-            if ("WORKFLOW_MESSAGE".equals(event.getEventType())) {
+            if (WORKFLOW_MESSAGE.equals(event.getEventType())) {
                 camundaClient.newCorrelateMessageCommand()
                         .messageName(event.getMessageName())
                         .correlationKey(event.getCorrelationKey())
                         .variables(Map.of(
-                                "pedidoId", event.getAggregateId(),
-                                "estado", event.getEstado()
+                                PEDIDO_ID, event.getAggregateId(),
+                                STATUS, event.getEstado()
                         ))
                         .send()
                         .join();
-            } else if ("WORKFLOW_START".equals(event.getEventType())) {
+            } else if (WORKFLOW_START.equals(event.getEventType())) {
                 PedidoEntity pedido = pedidoRepository.findById(event.getAggregateId())
-                        .orElseThrow(() -> new IllegalStateException("Pedido no encontrado para outbox: " + event.getAggregateId()));
+                        .orElseThrow(() -> new IllegalStateException(PEDIDO_NOT_FOUND + event.getAggregateId()));
 
                 ProcessInstanceEvent pi = camundaClient
                         .newCreateInstanceCommand()
                         .bpmnProcessId(event.getMessageName())
                         .latestVersion()
                         .variables(Map.of(
-                                "pedidoId", pedido.getId(),
-                                "pedidoCorrelationKey", pedido.getPedidoCorrelationKey(),
-                                "cliente", pedido.getCliente(),
-                                "monto", pedido.getMonto(),
-                                "estado", pedido.getEstado().name()
+                                PEDIDO_ID, pedido.getId(),
+                                PEDIDO_CORRELATION, pedido.getPedidoCorrelationKey(),
+                                CLIENTE, pedido.getCliente(),
+                                MONTO, pedido.getMonto(),
+                                STATUS, pedido.getEstado().name()
                         ))
                         .send()
                         .join();
@@ -137,7 +154,7 @@ public class OutboxServiceImpl implements OutboxService {
                 pedido.setProcessDefinitionKey(pi.getProcessDefinitionKey());
                 pedidoRepository.save(pedido);
             } else {
-                throw new IllegalStateException("Tipo de evento outbox no soportado: " + event.getEventType());
+                throw new IllegalStateException(TIPO_EVENT_NOT_SUPPORT + event.getEventType());
             }
 
             markProcessed(event);
@@ -154,7 +171,7 @@ public class OutboxServiceImpl implements OutboxService {
             event.setLastError(null);
             outboxEventRepository.save(event);
         });
-        meterRegistry.counter("outbox.events.processed.total", "eventType", event.getEventType()).increment();
+        meterRegistry.counter(OUTBOX_EVENTS_PROCESSED_TOTAL, EVENT_TYPE, event.getEventType()).increment();
     }
 
     @Override
@@ -165,11 +182,11 @@ public class OutboxServiceImpl implements OutboxService {
             event.setLastError(trim(error));
             if (retries >= maxRetries) {
                 event.setStatus(OutboxStatus.FAILED);
-                meterRegistry.counter("outbox.events.failed.total", "eventType", event.getEventType()).increment();
+                meterRegistry.counter(OUTBOX_EVENTS_FAILED_TOTAL, EVENT_TYPE, event.getEventType()).increment();
             } else {
                 event.setStatus(OutboxStatus.PENDING);
                 event.setNextAttemptAt(LocalDateTime.now().plusSeconds(Math.min(300, retries * 10L)));
-                meterRegistry.counter("outbox.events.retry.total", "eventType", event.getEventType()).increment();
+                meterRegistry.counter(OUTBOX_EVENTS_RETRY_TOTAL, EVENT_TYPE, event.getEventType()).increment();
             }
             outboxEventRepository.save(event);
         });

@@ -5,7 +5,6 @@ import bpmn.pedido.app.model.dto.CrearPedidoRequest;
 import bpmn.pedido.app.model.dto.PedidoEventoResponse;
 import bpmn.pedido.app.model.dto.PedidoResponse;
 import bpmn.pedido.app.model.enums.EstadoPedido;
-import bpmn.pedido.app.exception.IdempotencyKeyRequiredException;
 import bpmn.pedido.app.service.PedidoService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -13,9 +12,18 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
+
+import static bpmn.pedido.app.utils.Helpers.requireIdempotencyKey;
 
 @RestController
 @RequestMapping("/api/pedidos")
@@ -74,10 +82,5 @@ public class PedidoController {
         return pedidoService.historial(id);
     }
 
-    private String requireIdempotencyKey(String idempotencyKey) {
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new IdempotencyKeyRequiredException("El header Idempotency-Key es obligatorio");
-        }
-        return idempotencyKey.trim();
-    }
+
 }

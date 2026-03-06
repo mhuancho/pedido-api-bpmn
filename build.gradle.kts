@@ -24,7 +24,8 @@ repositories {
 	mavenCentral()
 }
 
-	var camundaVersion = "8.8.9"
+var camundaVersion = "8.8.9"
+var logbackVersion = "8.0"
 
 dependencies {
 	implementation("io.camunda:camunda-spring-boot-4-starter:${camundaVersion}")
@@ -38,7 +39,7 @@ dependencies {
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("io.micrometer:micrometer-tracing-bridge-brave")
 	implementation("io.micrometer:micrometer-registry-prometheus")
-	implementation("net.logstash.logback:logstash-logback-encoder:8.0")
+	implementation("net.logstash.logback:logstash-logback-encoder:${logbackVersion}")
 
 	runtimeOnly("org.postgresql:postgresql")
 	compileOnly("org.projectlombok:lombok")

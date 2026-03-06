@@ -1,8 +1,8 @@
 package bpmn.pedido.app.repository.constants;
 
 public class Constantes {
-
-    public final static String PENDING_GAUGE =
+    Constantes(){}
+    public static final String PENDING_GAUGE =
             """
             SELECT id
             FROM outbox_event
@@ -14,7 +14,7 @@ public class Constantes {
             """
             ;
 
-    public final static String UPDATE_STATUS_FOR_ID = """
+    public static final String UPDATE_STATUS_FOR_ID = """
             UPDATE OutboxEventEntity e
                SET e.status = :newStatus
              WHERE e.id IN :ids

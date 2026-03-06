@@ -24,6 +24,22 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import static bpmn.pedido.app.utils.Constants.INICIAR_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_TRANSITION_TOTAL;
+import static bpmn.pedido.app.utils.Constants.ACCION;
+import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.STATUS;
+import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO_ONLY_PENDING;
+import static bpmn.pedido.app.utils.Constants.APROBADO_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.PAGAR_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO_ONLY_APR;
+import static bpmn.pedido.app.utils.Constants.PAGADO_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.NOT_FINALIZE;
+import static bpmn.pedido.app.utils.Constants.CANCELAR_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.CANCELADO_PEDIDO;
+import static bpmn.pedido.app.utils.Constants.CLIENTE;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_NOT_FOUND_ONLY;
+
 @Service
 @RequiredArgsConstructor
 public class PedidoServiceImpl implements PedidoService {
@@ -47,8 +63,8 @@ public class PedidoServiceImpl implements PedidoService {
         pedido = pedidoRepository.save(pedido);
 
         outboxService.enqueueWorkflowStart(pedido);
-        registrarEvento(pedido, "INICIAR_PEDIDO", null, EstadoPedido.PENDIENTE);
-        meterRegistry.counter("pedido.transition.total", "accion", "INICIAR_PEDIDO", "estado", EstadoPedido.PENDIENTE.name()).increment();
+        registrarEvento(pedido, INICIAR_PEDIDO, null, EstadoPedido.PENDIENTE);
+        meterRegistry.counter(PEDIDO_TRANSITION_TOTAL, ACCION, INICIAR_PEDIDO, STATUS, EstadoPedido.PENDIENTE.name()).increment();
 
         return toResponse(pedido);
     }
@@ -56,13 +72,13 @@ public class PedidoServiceImpl implements PedidoService {
     @Transactional
     @Override
     public CambioEstadoResponse aprobar(Long id, String idempotencyKey) {
-        final String accion = "APROBAR_PEDIDO";
+        final String accion = APROBAR_PEDIDO;
         PedidoEntity pedido = getPedidoForUpdate(id);
         idempotencyService.validateNoCrossReuse(idempotencyKey, accion, id);
         EstadoPedido estadoAnterior = pedido.getEstado();
 
         if (pedido.getEstado() != EstadoPedido.PENDIENTE) {
-            throw new IllegalStateException("Solo se puede aprobar un pedido en estado PENDIENTE");
+            throw new IllegalStateException(APROBAR_PEDIDO_ONLY_PENDING);
         }
 
         CambioEstadoResponse expectedResponse = new CambioEstadoResponse(pedido.getId(), EstadoPedido.APROBADO.name());
@@ -77,25 +93,25 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                "pedido-aprobado",
+                APROBADO_PEDIDO,
                 pedido.getEstado().name()
         );
 
         registrarEvento(pedido, accion, estadoAnterior, EstadoPedido.APROBADO);
-        meterRegistry.counter("pedido.transition.total", "accion", accion, "estado", EstadoPedido.APROBADO.name()).increment();
+        meterRegistry.counter(PEDIDO_TRANSITION_TOTAL, ACCION, accion, STATUS, EstadoPedido.APROBADO.name()).increment();
         return expectedResponse;
     }
 
     @Transactional
     @Override
     public CambioEstadoResponse pagar(Long id, String idempotencyKey) {
-        final String accion = "PAGAR_PEDIDO";
+        final String accion = PAGAR_PEDIDO;
         PedidoEntity pedido = getPedidoForUpdate(id);
         idempotencyService.validateNoCrossReuse(idempotencyKey, accion, id);
         EstadoPedido estadoAnterior = pedido.getEstado();
 
         if (pedido.getEstado() != EstadoPedido.APROBADO) {
-            throw new IllegalStateException("Solo se puede pagar un pedido en estado APROBADO");
+            throw new IllegalStateException(APROBAR_PEDIDO_ONLY_APR);
         }
 
         CambioEstadoResponse expectedResponse = new CambioEstadoResponse(pedido.getId(), EstadoPedido.PAGADO.name());
@@ -110,25 +126,25 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                "pedido-pagado",
+                PAGADO_PEDIDO,
                 pedido.getEstado().name()
         );
 
         registrarEvento(pedido, accion, estadoAnterior, EstadoPedido.PAGADO);
-        meterRegistry.counter("pedido.transition.total", "accion", accion, "estado", EstadoPedido.PAGADO.name()).increment();
+        meterRegistry.counter(PEDIDO_TRANSITION_TOTAL, ACCION, accion, STATUS, EstadoPedido.PAGADO.name()).increment();
         return expectedResponse;
     }
 
     @Transactional
     @Override
     public CambioEstadoResponse cancelar(Long id, String idempotencyKey) {
-        final String accion = "CANCELAR_PEDIDO";
+        final String accion = CANCELAR_PEDIDO;
         PedidoEntity pedido = getPedidoForUpdate(id);
         idempotencyService.validateNoCrossReuse(idempotencyKey, accion, id);
         EstadoPedido estadoAnterior = pedido.getEstado();
 
         if (pedido.getEstado() == EstadoPedido.PAGADO || pedido.getEstado() == EstadoPedido.CANCELADO) {
-            throw new IllegalStateException("No se puede cancelar un pedido ya finalizado");
+            throw new IllegalStateException(NOT_FINALIZE);
         }
 
         CambioEstadoResponse expectedResponse = new CambioEstadoResponse(pedido.getId(), EstadoPedido.CANCELADO.name());
@@ -143,12 +159,12 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                "pedido-cancelado",
+                CANCELADO_PEDIDO,
                 pedido.getEstado().name()
         );
 
         registrarEvento(pedido, accion, estadoAnterior, EstadoPedido.CANCELADO);
-        meterRegistry.counter("pedido.transition.total", "accion", accion, "estado", EstadoPedido.CANCELADO.name()).increment();
+        meterRegistry.counter(PEDIDO_TRANSITION_TOTAL, ACCION, accion, STATUS, EstadoPedido.CANCELADO.name()).increment();
         return expectedResponse;
     }
 
@@ -165,10 +181,10 @@ public class PedidoServiceImpl implements PedidoService {
         return pedidoRepository.findAll((root, query, cb) -> {
             var predicates = cb.conjunction();
             if (cliente != null && !cliente.isBlank()) {
-                predicates = cb.and(predicates, cb.like(cb.lower(root.get("cliente")), "%" + cliente.toLowerCase() + "%"));
+                predicates = cb.and(predicates, cb.like(cb.lower(root.get(CLIENTE)), "%" + cliente.toLowerCase() + "%"));
             }
             if (estado != null) {
-                predicates = cb.and(predicates, cb.equal(root.get("estado"), estado));
+                predicates = cb.and(predicates, cb.equal(root.get(STATUS), estado));
             }
             return predicates;
         }, pageable).map(this::toResponse);
@@ -178,7 +194,7 @@ public class PedidoServiceImpl implements PedidoService {
     @Override
     public List<PedidoEventoResponse> historial(Long pedidoId) {
         if (!pedidoRepository.existsById(pedidoId)) {
-            throw new EntityNotFoundException("Pedido no encontrado: " + pedidoId);
+            throw new EntityNotFoundException(PEDIDO_NOT_FOUND_ONLY+ pedidoId);
         }
 
         return pedidoEventoRepository.findByPedidoIdOrderByFechaEventoAsc(pedidoId)
@@ -195,12 +211,12 @@ public class PedidoServiceImpl implements PedidoService {
 
     private PedidoEntity getPedido(Long id) {
         return pedidoRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Pedido no encontrado: " + id));
+                .orElseThrow(() -> new EntityNotFoundException(PEDIDO_NOT_FOUND_ONLY + id));
     }
 
     private PedidoEntity getPedidoForUpdate(Long id) {
         return pedidoRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new EntityNotFoundException("Pedido no encontrado: " + id));
+                .orElseThrow(() -> new EntityNotFoundException(PEDIDO_NOT_FOUND_ONLY + id));
     }
 
     private void registrarEvento(PedidoEntity pedido, String accion, EstadoPedido estadoAnterior, EstadoPedido estadoNuevo) {
