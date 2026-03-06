@@ -6,16 +6,25 @@ spring:
     name: camunda-api-demo
 
   datasource:
-    url: jdbc:postgresql://localhost:5534/ventas_db
-    username: postgres17
-    password: 123
+    url: ${DB_URL:jdbc:postgresql://localhost:5534/ventas_db}
+    username: ${DB_USERNAME:postgres17}
+    password: ${DB_PASSWORD:123}
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: none
+    generate-ddl: false
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:18080/auth/realms/camunda-platform}
   threads:
     virtual:
       enabled: true
@@ -26,9 +35,9 @@ camunda:
     auth:
       method: oidc
       client-id: orchestration
-      client-secret: secret
-      token-url: http://localhost:18080/auth/realms/camunda-platform/protocol/openid-connect/token
-      audience: orchestration-api
+      client-secret: ${CAMUNDA_CLIENT_SECRET:secret}
+      token-url: ${CAMUNDA_TOKEN_URL:http://localhost:18080/auth/realms/camunda-platform/protocol/openid-connect/token}
+      audience: ${CAMUNDA_AUDIENCE:orchestration-api}
     grpc-address: http://localhost:26500
     rest-address: http://localhost:8080
     prefer-rest-over-grpc: false
@@ -44,4 +53,31 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 0.1
+  observations:
+    annotations:
+      enabled: true
+  endpoint:
+    health:
+      show-details: when_authorized
+
+logging:
+  level:
+    root: INFO
+  structured:
+    format:
+      console: ecs
+
+app:
+  security:
+    jwt:
+      resource-client-id: ${JWT_RESOURCE_CLIENT_ID:orchestration-api}
+  outbox:
+    publisher-delay-ms: 3000
+    max-retries: 10
+    cleanup-retention-hours: 168
+  idempotency:
+    retention-hours: 168

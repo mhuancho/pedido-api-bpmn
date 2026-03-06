@@ -1,4 +1,4 @@
-package bpmn.pedido.app.enums;
+package bpmn.pedido.app.model.enums;
 
 public enum EstadoPedido {
     PENDIENTE,

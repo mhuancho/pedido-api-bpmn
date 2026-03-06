@@ -1,10 +1,11 @@
-package bpmn.pedido.app.dto;
+package bpmn.pedido.app.model.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 public record CrearPedidoRequest(
         @NotBlank String cliente,
-        @NotNull Integer monto
+        @NotNull @Positive Integer monto
 ) {
 }

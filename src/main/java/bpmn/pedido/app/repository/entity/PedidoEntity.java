@@ -1,6 +1,6 @@
-package bpmn.pedido.app.entity;
+package bpmn.pedido.app.repository.entity;
 
-import bpmn.pedido.app.enums.EstadoPedido;
+import bpmn.pedido.app.model.enums.EstadoPedido;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -8,7 +8,10 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "pedido")
+@Table(name = "pedido", indexes = {
+        @Index(name = "idx_pedido_estado", columnList = "estado"),
+        @Index(name = "idx_pedido_cliente", columnList = "cliente")
+})
 @Getter
 @Setter
 public class PedidoEntity {
