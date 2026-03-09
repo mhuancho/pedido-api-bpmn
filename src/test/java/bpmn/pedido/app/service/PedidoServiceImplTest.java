@@ -1,5 +1,7 @@
 package bpmn.pedido.app.service;
 
+import bpmn.pedido.app.config.OrchestrationProperties;
+import bpmn.pedido.app.config.WorkflowProperties;
 import bpmn.pedido.app.repository.dao.PedidoEventoRepository;
 import bpmn.pedido.app.repository.dao.PedidoRepository;
 import bpmn.pedido.app.model.dto.CambioEstadoResponse;
@@ -9,6 +11,8 @@ import bpmn.pedido.app.repository.entity.PedidoEventoEntity;
 import bpmn.pedido.app.repository.entity.PedidoEntity;
 import bpmn.pedido.app.model.enums.EstadoPedido;
 import bpmn.pedido.app.model.IdempotencyReservation;
+import bpmn.pedido.app.service.gateway.CamundaGatewayClient;
+import bpmn.pedido.app.service.gateway.dto.StartProcessGatewayResponse;
 import bpmn.pedido.app.service.impl.PedidoServiceImpl;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -51,6 +55,16 @@ class PedidoServiceImplTest {
     private MeterRegistry meterRegistry;
     @Mock
     private Counter counter;
+    @Mock
+    private WorkflowProperties workflowProperties;
+    @Mock
+    private WorkflowProperties.Messages workflowMessages;
+    @Mock
+    private CamundaGatewayClient camundaGatewayClient;
+    @Mock
+    private OrchestrationProperties orchestrationProperties;
+    @Mock
+    private OrchestrationProperties.Keys orchestrationKeys;
 
     private PedidoServiceImpl pedidoService;
 
@@ -58,17 +72,26 @@ class PedidoServiceImplTest {
     void setUp() {
         lenient().when(meterRegistry.counter(eq("pedido.transition.total"), anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(counter);
+        lenient().when(workflowProperties.getMessages()).thenReturn(workflowMessages);
+        lenient().when(workflowMessages.getAprobadoPedido()).thenReturn("pedido-aprobado");
+        lenient().when(workflowMessages.getPagadoPedido()).thenReturn("pedido-pagado");
+        lenient().when(workflowMessages.getCanceladoPedido()).thenReturn("pedido-cancelado");
+        lenient().when(orchestrationProperties.getKeys()).thenReturn(orchestrationKeys);
+        lenient().when(orchestrationKeys.getProcessPedido()).thenReturn("PEDIDO_PROCESS");
         pedidoService = new PedidoServiceImpl(
                 pedidoRepository,
                 pedidoEventoRepository,
                 idempotencyService,
                 outboxService,
-                meterRegistry
+                meterRegistry,
+                workflowProperties,
+                camundaGatewayClient,
+                orchestrationProperties
         );
     }
 
     @Test
-    void iniciar_debeGuardarPedidoYEncolarInicioDeWorkflow() {
+    void iniciar_debeGuardarPedidoYRetornarKeysDeProceso() {
         CrearPedidoRequest request = new CrearPedidoRequest("Mateo", 100);
         when(pedidoRepository.save(any(PedidoEntity.class))).thenAnswer(invocation -> {
             PedidoEntity entity = invocation.getArgument(0);
@@ -77,11 +100,15 @@ class PedidoServiceImplTest {
             }
             return entity;
         });
+        when(camundaGatewayClient.startProcess(any()))
+                .thenReturn(new StartProcessGatewayResponse(123L, 456L, "proceso-pedido"));
 
         var response = pedidoService.iniciar(request);
 
         assertThat(response.id()).isEqualTo(10L);
-        verify(outboxService).enqueueWorkflowStart(any(PedidoEntity.class));
+        assertThat(response.processInstanceKey()).isEqualTo(123L);
+        assertThat(response.processDefinitionKey()).isEqualTo(456L);
+        verify(camundaGatewayClient).startProcess(any());
     }
 
     @Test

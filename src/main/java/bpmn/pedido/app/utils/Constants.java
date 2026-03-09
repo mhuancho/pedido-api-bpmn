@@ -11,10 +11,6 @@ public class Constants {
     public static final String PAGAR_PEDIDO = "PAGAR_PEDIDO";
     public static final String WORKFLOW_MESSAGE = "WORKFLOW_MESSAGE";
     public static final String WORKFLOW_START = "WORKFLOW_START";
-    public static final String PROCESO_PEDIDO = "proceso-pedido";
-    public static final String APROBADO_PEDIDO = "pedido-aprobado";
-    public static final String PAGADO_PEDIDO = "pedido-pagado";
-    public static final String CANCELADO_PEDIDO = "pedido-cancelado";
     public static final String PEDIDO_ID = "pedidoId";
     public static final String PEDIDO_CORRELATION = "pedidoCorrelationKey";
     public static final String STATUS = "estado";

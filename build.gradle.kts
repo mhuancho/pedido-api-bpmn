@@ -24,11 +24,24 @@ repositories {
 	mavenCentral()
 }
 
-var camundaVersion = "8.8.9"
+var openFeignVersion = "13.6"
 var logbackVersion = "8.0"
+var jacksonBom2Version = "2.21.1"
+var jacksonAnnotationsVersion = "2.21"
+var jacksonBom3Version = "3.1.0"
+
+dependencyManagement {
+	dependencies {
+		dependency("com.fasterxml.jackson.core:jackson-core:${jacksonBom2Version}")
+		dependency("com.fasterxml.jackson.core:jackson-databind:${jacksonBom2Version}")
+		dependency("com.fasterxml.jackson.core:jackson-annotations:${jacksonAnnotationsVersion}")
+		dependency("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:${jacksonBom2Version}")
+		dependency("tools.jackson.core:jackson-core:${jacksonBom3Version}")
+		dependency("tools.jackson.core:jackson-databind:${jacksonBom3Version}")
+	}
+}
 
 dependencies {
-	implementation("io.camunda:camunda-spring-boot-4-starter:${camundaVersion}")
 	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
@@ -40,6 +53,9 @@ dependencies {
 	implementation("io.micrometer:micrometer-tracing-bridge-brave")
 	implementation("io.micrometer:micrometer-registry-prometheus")
 	implementation("net.logstash.logback:logstash-logback-encoder:${logbackVersion}")
+	implementation("io.github.openfeign:feign-core:${openFeignVersion}")
+	implementation("io.github.openfeign:feign-jackson:${openFeignVersion}")
+	implementation("io.github.openfeign:feign-slf4j:${openFeignVersion}")
 
 	runtimeOnly("org.postgresql:postgresql")
 	compileOnly("org.projectlombok:lombok")

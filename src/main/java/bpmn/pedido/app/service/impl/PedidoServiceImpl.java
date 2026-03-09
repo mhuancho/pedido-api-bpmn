@@ -1,5 +1,7 @@
 package bpmn.pedido.app.service.impl;
 
+import bpmn.pedido.app.config.OrchestrationProperties;
+import bpmn.pedido.app.config.WorkflowProperties;
 import bpmn.pedido.app.repository.dao.PedidoEventoRepository;
 import bpmn.pedido.app.repository.dao.PedidoRepository;
 import bpmn.pedido.app.model.dto.CambioEstadoResponse;
@@ -12,6 +14,9 @@ import bpmn.pedido.app.model.enums.EstadoPedido;
 import bpmn.pedido.app.service.IdempotencyService;
 import bpmn.pedido.app.service.OutboxService;
 import bpmn.pedido.app.service.PedidoService;
+import bpmn.pedido.app.service.gateway.CamundaGatewayClient;
+import bpmn.pedido.app.service.gateway.dto.StartProcessGatewayRequest;
+import bpmn.pedido.app.service.gateway.dto.StartProcessGatewayResponse;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.data.domain.Page;
@@ -30,14 +35,14 @@ import static bpmn.pedido.app.utils.Constants.ACCION;
 import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.STATUS;
 import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO_ONLY_PENDING;
-import static bpmn.pedido.app.utils.Constants.APROBADO_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.PAGAR_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.APROBAR_PEDIDO_ONLY_APR;
-import static bpmn.pedido.app.utils.Constants.PAGADO_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.NOT_FINALIZE;
 import static bpmn.pedido.app.utils.Constants.CANCELAR_PEDIDO;
-import static bpmn.pedido.app.utils.Constants.CANCELADO_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.CLIENTE;
+import static bpmn.pedido.app.utils.Constants.MONTO;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_CORRELATION;
+import static bpmn.pedido.app.utils.Constants.PEDIDO_ID;
 import static bpmn.pedido.app.utils.Constants.PEDIDO_NOT_FOUND_ONLY;
 
 @Service
@@ -49,6 +54,9 @@ public class PedidoServiceImpl implements PedidoService {
     private final IdempotencyService idempotencyService;
     private final OutboxService outboxService;
     private final MeterRegistry meterRegistry;
+    private final WorkflowProperties workflowProperties;
+    private final CamundaGatewayClient camundaGatewayClient;
+    private final OrchestrationProperties orchestrationProperties;
 
     @Transactional
     @Override
@@ -62,7 +70,23 @@ public class PedidoServiceImpl implements PedidoService {
 
         pedido = pedidoRepository.save(pedido);
 
-        outboxService.enqueueWorkflowStart(pedido);
+        StartProcessGatewayResponse startProcessResponse = camundaGatewayClient.startProcess(
+                new StartProcessGatewayRequest(
+                        orchestrationProperties.getKeys().getProcessPedido(),
+                        pedido.getPedidoCorrelationKey(),
+                        java.util.Map.of(
+                                PEDIDO_ID, pedido.getId(),
+                                PEDIDO_CORRELATION, pedido.getPedidoCorrelationKey(),
+                                CLIENTE, pedido.getCliente(),
+                                MONTO, pedido.getMonto(),
+                                STATUS, pedido.getEstado().name()
+                        )
+                )
+        );
+        pedido.setProcessInstanceKey(startProcessResponse.instanceKey());
+        pedido.setProcessDefinitionKey(startProcessResponse.definitionKey());
+        pedido = pedidoRepository.save(pedido);
+
         registrarEvento(pedido, INICIAR_PEDIDO, null, EstadoPedido.PENDIENTE);
         meterRegistry.counter(PEDIDO_TRANSITION_TOTAL, ACCION, INICIAR_PEDIDO, STATUS, EstadoPedido.PENDIENTE.name()).increment();
 
@@ -93,7 +117,7 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                APROBADO_PEDIDO,
+                workflowProperties.getMessages().getAprobadoPedido(),
                 pedido.getEstado().name()
         );
 
@@ -126,7 +150,7 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                PAGADO_PEDIDO,
+                workflowProperties.getMessages().getPagadoPedido(),
                 pedido.getEstado().name()
         );
 
@@ -159,7 +183,7 @@ public class PedidoServiceImpl implements PedidoService {
         outboxService.enqueueWorkflowMessage(
                 pedido.getId(),
                 pedido.getPedidoCorrelationKey(),
-                CANCELADO_PEDIDO,
+                workflowProperties.getMessages().getCanceladoPedido(),
                 pedido.getEstado().name()
         );
 

@@ -29,26 +29,6 @@ spring:
     virtual:
       enabled: true
 
-camunda:
-  client:
-    mode: self-managed
-    auth:
-      method: oidc
-      client-id: orchestration
-      client-secret: ${CAMUNDA_CLIENT_SECRET:secret}
-      token-url: ${CAMUNDA_TOKEN_URL:http://localhost:18080/auth/realms/camunda-platform/protocol/openid-connect/token}
-      audience: ${CAMUNDA_AUDIENCE:orchestration-api}
-    grpc-address: http://localhost:26500
-    rest-address: http://localhost:8080
-    prefer-rest-over-grpc: false
-    request-timeout: PT30S
-    request-timeout-offset: PT5S
-    worker:
-      defaults:
-        request-timeout: PT30S
-        poll-interval: PT1S
-        timeout: PT5M
-
 management:
   endpoints:
     web:
@@ -81,3 +61,25 @@ app:
     cleanup-retention-hours: 168
   idempotency:
     retention-hours: 168
+  orchestration:
+    base-url: ${ORCHESTRATION_BASE_URL:http://localhost:4333}
+    connect-timeout-ms: ${ORCHESTRATION_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${ORCHESTRATION_READ_TIMEOUT_MS:5000}
+    retry-max-attempts: ${ORCHESTRATION_RETRY_MAX_ATTEMPTS:2}
+    retry-period-ms: ${ORCHESTRATION_RETRY_PERIOD_MS:200}
+    retry-max-period-ms: ${ORCHESTRATION_RETRY_MAX_PERIOD_MS:1000}
+    security:
+      token-header: ${INTERNAL_TOKEN_HEADER:X-Internal-Token}
+      token: ${INTERNAL_API_TOKEN:change-me-internal-token}
+    keys:
+      process-pedido: PEDIDO_PROCESS
+      message-pedido-aprobado: PEDIDO_APROBADO
+      message-pedido-pagado: PEDIDO_PAGADO
+      message-pedido-cancelado: PEDIDO_CANCELADO
+  workflow:
+    process:
+      pedido: proceso-pedido
+    messages:
+      aprobado-pedido: pedido-aprobado
+      pagado-pedido: pedido-pagado
+      cancelado-pedido: pedido-cancelado

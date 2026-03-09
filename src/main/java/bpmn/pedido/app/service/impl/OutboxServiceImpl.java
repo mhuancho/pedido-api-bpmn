@@ -1,13 +1,17 @@
 package bpmn.pedido.app.service.impl;
 
+import bpmn.pedido.app.config.OrchestrationProperties;
+import bpmn.pedido.app.config.WorkflowProperties;
 import bpmn.pedido.app.repository.dao.OutboxEventRepository;
 import bpmn.pedido.app.repository.dao.PedidoRepository;
 import bpmn.pedido.app.repository.entity.OutboxEventEntity;
 import bpmn.pedido.app.repository.entity.PedidoEntity;
 import bpmn.pedido.app.model.enums.OutboxStatus;
+import bpmn.pedido.app.service.gateway.CamundaGatewayClient;
+import bpmn.pedido.app.service.gateway.dto.CorrelateMessageGatewayRequest;
+import bpmn.pedido.app.service.gateway.dto.StartProcessGatewayRequest;
+import bpmn.pedido.app.service.gateway.dto.StartProcessGatewayResponse;
 import bpmn.pedido.app.service.OutboxService;
-import io.camunda.client.CamundaClient;
-import io.camunda.client.api.response.ProcessInstanceEvent;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -25,7 +29,6 @@ import java.util.Map;
 import static bpmn.pedido.app.utils.Constants.PEDIDO;
 import static bpmn.pedido.app.utils.Constants.WORKFLOW_MESSAGE;
 import static bpmn.pedido.app.utils.Constants.WORKFLOW_START;
-import static bpmn.pedido.app.utils.Constants.PROCESO_PEDIDO;
 import static bpmn.pedido.app.utils.Constants.PEDIDO_ID;
 import static bpmn.pedido.app.utils.Constants.STATUS;
 import static bpmn.pedido.app.utils.Constants.PEDIDO_NOT_FOUND;
@@ -46,9 +49,11 @@ public class OutboxServiceImpl implements OutboxService {
 
     private final OutboxEventRepository outboxEventRepository;
     private final PedidoRepository pedidoRepository;
-    private final CamundaClient camundaClient;
+    private final CamundaGatewayClient camundaGatewayClient;
     private final MeterRegistry meterRegistry;
     private final TransactionTemplate transactionTemplate;
+    private final WorkflowProperties workflowProperties;
+    private final OrchestrationProperties orchestrationProperties;
 
     @Value("${app.outbox.max-retries:10}")
     private int maxRetries;
@@ -79,7 +84,7 @@ public class OutboxServiceImpl implements OutboxService {
         event.setAggregateType(PEDIDO);
         event.setAggregateId(pedido.getId());
         event.setEventType(WORKFLOW_START);
-        event.setMessageName(PROCESO_PEDIDO);
+        event.setMessageName(workflowProperties.getProcess().getPedido());
         event.setCorrelationKey(pedido.getPedidoCorrelationKey());
         event.setEstado(pedido.getEstado().name());
         event.setStatus(OutboxStatus.PENDING);
@@ -123,35 +128,34 @@ public class OutboxServiceImpl implements OutboxService {
     private void processEvent(OutboxEventEntity event) {
         try {
             if (WORKFLOW_MESSAGE.equals(event.getEventType())) {
-                camundaClient.newCorrelateMessageCommand()
-                        .messageName(event.getMessageName())
-                        .correlationKey(event.getCorrelationKey())
-                        .variables(Map.of(
+                camundaGatewayClient.correlateMessage(new CorrelateMessageGatewayRequest(
+                        resolveMessageKey(event.getMessageName()),
+                        event.getCorrelationKey(),
+                        Map.of(
                                 PEDIDO_ID, event.getAggregateId(),
                                 STATUS, event.getEstado()
-                        ))
-                        .send()
-                        .join();
+                        )
+                ));
             } else if (WORKFLOW_START.equals(event.getEventType())) {
                 PedidoEntity pedido = pedidoRepository.findById(event.getAggregateId())
                         .orElseThrow(() -> new IllegalStateException(PEDIDO_NOT_FOUND + event.getAggregateId()));
 
-                ProcessInstanceEvent pi = camundaClient
-                        .newCreateInstanceCommand()
-                        .bpmnProcessId(event.getMessageName())
-                        .latestVersion()
-                        .variables(Map.of(
+                StartProcessGatewayResponse pi = camundaGatewayClient.startProcess(
+                        new StartProcessGatewayRequest(
+                                orchestrationProperties.getKeys().getProcessPedido(),
+                                event.getCorrelationKey(),
+                                Map.of(
                                 PEDIDO_ID, pedido.getId(),
                                 PEDIDO_CORRELATION, pedido.getPedidoCorrelationKey(),
                                 CLIENTE, pedido.getCliente(),
                                 MONTO, pedido.getMonto(),
                                 STATUS, pedido.getEstado().name()
-                        ))
-                        .send()
-                        .join();
+                                )
+                        )
+                );
 
-                pedido.setProcessInstanceKey(pi.getProcessInstanceKey());
-                pedido.setProcessDefinitionKey(pi.getProcessDefinitionKey());
+                pedido.setProcessInstanceKey(pi.instanceKey());
+                pedido.setProcessDefinitionKey(pi.definitionKey());
                 pedidoRepository.save(pedido);
             } else {
                 throw new IllegalStateException(TIPO_EVENT_NOT_SUPPORT + event.getEventType());
@@ -160,7 +164,7 @@ public class OutboxServiceImpl implements OutboxService {
             markProcessed(event);
         } catch (Exception ex) {
             markFailed(event, ex.getMessage());
-            log.error("Error publicando evento outbox id={} type={} message={}", event.getId(), event.getEventType(), ex.getMessage());
+            log.error("Error publicando evento outbox id={} type={} message={}", event.getId(), event.getEventType(), ex.getMessage(), ex);
         }
     }
 
@@ -200,5 +204,18 @@ public class OutboxServiceImpl implements OutboxService {
             return text;
         }
         return text.substring(0, 500);
+    }
+
+    private String resolveMessageKey(String messageName) {
+        if (messageName.equals(workflowProperties.getMessages().getAprobadoPedido())) {
+            return orchestrationProperties.getKeys().getMessagePedidoAprobado();
+        }
+        if (messageName.equals(workflowProperties.getMessages().getPagadoPedido())) {
+            return orchestrationProperties.getKeys().getMessagePedidoPagado();
+        }
+        if (messageName.equals(workflowProperties.getMessages().getCanceladoPedido())) {
+            return orchestrationProperties.getKeys().getMessagePedidoCancelado();
+        }
+        throw new IllegalStateException("messageName no soportado para gateway: " + messageName);
     }
 }
